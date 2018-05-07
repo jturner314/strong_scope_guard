@@ -1,0 +1,6 @@
+[package]
+name = "strong_scope_guard"
+version = "0.1.0"
+authors = ["Jim Turner <rust@turner.link>"]
+
+[dependencies]
