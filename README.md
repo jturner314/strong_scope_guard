@@ -1,9 +1,9 @@
 # `strong_scope_guard`
 
-[![Build status](https://travis-ci.org/jturner314/strong_scopeguard.svg?branch=master)](https://travis-ci.org/jturner314/strong_scopeguard)
-[![Dependencies status](https://deps.rs/repo/github/jturner314/strong_scopeguard/status.svg)](https://deps.rs/repo/github/jturner314/strong_scopeguard)
-[![Crate](https://img.shields.io/crates/v/strong_scopeguard.svg)](https://crates.io/crates/strong_scopeguard)
-[![Documentation](https://docs.rs/strong_scopeguard/badge.svg)](https://docs.rs/strong_scopeguard)
+[![Build status](https://travis-ci.org/jturner314/strong_scope_guard.svg?branch=master)](https://travis-ci.org/jturner314/strong_scope_guard)
+[![Dependencies status](https://deps.rs/repo/github/jturner314/strong_scope_guard/status.svg)](https://deps.rs/repo/github/jturner314/strong_scope_guard)
+[![Crate](https://img.shields.io/crates/v/strong_scope_guard.svg)](https://crates.io/crates/strong_scope_guard)
+[![Documentation](https://docs.rs/strong_scope_guard/badge.svg)](https://docs.rs/strong_scope_guard)
 
 This crate provides scope guards that can be relied upon for memory safety.
 This is a workaround for Rust's lack of a guarantee that destructors will be
