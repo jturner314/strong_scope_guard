@@ -29,6 +29,10 @@ in most Rust code. However, it becomes important in embedded applications where
 a peripheral can run concurrently with the main thread, such as DMA transfers
 (memory safety) or running an ADC (preventing hardware damage).
 
+## Contributing
+
+Please feel free to create issues and submit PRs.
+
 ## License
 
 Copyright 2018 Jim Turner
