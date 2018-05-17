@@ -36,6 +36,20 @@ pub struct ScopeGuard<'a, F: CallOnce> {
     f: Option<F>,
 }
 
+impl<F: CallOnce> ScopeGuard<'static, F> {
+    /// Creates a guard for the `'static` lifetime.
+    ///
+    /// This guard's closure will be called only if the guard is dropped. This
+    /// should never be an issue in practice because a `ScopeGuard<'static, F>`
+    /// can protect only `'static` resources.
+    pub fn new_static() -> ScopeGuard<'static, F> {
+        ScopeGuard {
+            life: PhantomData,
+            f: None,
+        }
+    }
+}
+
 impl<'a, F: CallOnce> ScopeGuard<'a, F> {
     /// Assigns the closure to be called when the scope ends.
     ///
