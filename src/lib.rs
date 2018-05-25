@@ -29,7 +29,8 @@ impl<F: FnOnce()> CallOnce for F {
 //
 // TODO: create 'static handles
 pub struct ScopeGuard<'body, 'scope: 'body, F: CallOnce + 'body> {
-    guard: &'body mut InnerGuard<'scope, F>,
+    // `None` represents a guard for the `'static` scope.
+    inner: Option<&'body mut InnerGuard<'scope, F>>,
 }
 
 impl<'body, 'scope, F: CallOnce> ScopeGuard<'body, 'scope, F> {
@@ -38,10 +39,23 @@ impl<'body, 'scope, F: CallOnce> ScopeGuard<'body, 'scope, F> {
     /// This replaces the existing closure (if one is set).
     ///
     /// Assigning a closure is similar to placing a destructor on the stack,
-    /// except that the closure is guaranteed to be run (unless the program
-    /// exits/aborts first).
+    /// except that the closure is guaranteed to be run after `'body` ends but
+    /// before `'scope` ends (unless the program exits/aborts first or `'scope`
+    /// is the `'static` lifetime).
     pub fn assign(&mut self, f: Option<F>) {
-        self.guard.assign(f);
+        if let Some(ref mut inner) = self.inner {
+            inner.assign(f)
+        }
+    }
+}
+
+impl<'body, F: CallOnce> ScopeGuard<'body, 'static, F> {
+    /// Creates a guard for the `'static` lifetime.
+    ///
+    /// This guard does not contain a closure, so it can be used to protect
+    /// only `'static` resources.
+    pub fn new_static() -> Self {
+        ScopeGuard { inner: None }
     }
 }
 
@@ -58,20 +72,6 @@ pub struct InnerGuard<'scope, F: CallOnce> {
     f: Option<F>,
 }
 
-impl<F: CallOnce> InnerGuard<'static, F> {
-    /// Creates a guard for the `'static` lifetime.
-    ///
-    /// This guard's closure will be called only if the guard is dropped. This
-    /// should never be an issue in practice because a `InnerGuard<'static, F>`
-    /// can protect only `'static` resources.
-    pub fn new_static() -> InnerGuard<'static, F> {
-        InnerGuard {
-            life: PhantomData,
-            f: None,
-        }
-    }
-}
-
 impl<'scope, F: CallOnce> InnerGuard<'scope, F> {
     /// Returns a `ScopeGuard` that wraps the `InnerGuard`.
     ///
@@ -79,9 +79,7 @@ impl<'scope, F: CallOnce> InnerGuard<'scope, F> {
     /// individual `InnerGuard` over its entire lifetime.
     #[doc(hidden)]
     pub unsafe fn wrap(&mut self) -> ScopeGuard<'_, 'scope, F> {
-        ScopeGuard {
-            guard: self,
-        }
+        ScopeGuard { inner: Some(self) }
     }
 
     /// Assigns the closure to be called when the scope ends.
