@@ -203,6 +203,7 @@ macro_rules! scope {
             |&mut scope!(@tup_pat (), $($arg),*): &mut scope!(@tup_type (), $($arg),*)| {
                 $(
                     #[allow(unused_mut)]
+                    #[allow(unsafe_code)]
                     let mut $arg = unsafe { $arg.wrap() };
                 )*
                 $body
