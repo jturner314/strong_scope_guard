@@ -1,7 +1,7 @@
 #[macro_use(scope)]
 extern crate strong_scope_guard;
 
-use strong_scope_guard::GuardHandle;
+use strong_scope_guard::ScopeGuard;
 
 struct Dma<S> {
     state: S,
@@ -9,17 +9,17 @@ struct Dma<S> {
 
 struct Off {}
 
-struct Running<'guard, 'data: 'guard> {
+struct Running<'body, 'data: 'body> {
     data: &'data mut [u8],
-    guard: GuardHandle<'guard, 'data, fn()>,
+    guard: ScopeGuard<'body, 'data, fn()>,
 }
 
 impl Dma<Off> {
-    pub fn start<'guard, 'data>(
+    pub fn start<'body, 'data>(
         self,
         data: &'data mut [u8],
-        mut guard: GuardHandle<'guard, 'data, fn()>,
-    ) -> Dma<Running<'guard, 'data>> {
+        mut guard: ScopeGuard<'body, 'data, fn()>,
+    ) -> Dma<Running<'body, 'data>> {
         // start DMA
         guard.assign(Some(|| println!("stop DMA")));
         Dma {
@@ -28,7 +28,7 @@ impl Dma<Off> {
     }
 }
 
-impl<'guard, 'data> Dma<Running<'guard, 'data>> {
+impl<'body, 'data> Dma<Running<'body, 'data>> {
     pub fn stop(self) -> (Dma<Off>, &'data mut [u8]) {
         let Running { data, mut guard } = self.state;
         // stop DMA

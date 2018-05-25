@@ -1,17 +1,17 @@
+use super::{CallOnce, InnerGuard};
 use core::marker::PhantomData;
-use super::{CallOnce, Guard};
 
-/// Represents a collection of `Guard`s.
+/// Represents a collection of `InnerGuard`s.
 ///
 /// For an implementation of this trait to be safe, in its `call_all()`
 /// implementation, it must call `call_all()` on all children it creates in
 /// `new()`. In other words, it must not be possible to create a child in
 /// `new()` that is leaked while this collection lives.
-pub unsafe trait Guards<'a> {
+pub unsafe trait InnerGuards<'a> {
     /// Constructs a new instance of this type.
     ///
     /// This method must not be able to be called outside of the `scope()`
-    /// function because that would allow creation of `Guard` instances
+    /// function because that would allow creation of `InnerGuard` instances
     /// with arbitrary `'a` lifetimes.
     fn new() -> Self;
 
@@ -25,9 +25,9 @@ pub unsafe trait Guards<'a> {
 
 macro_rules! impl_tuple {
     ($($elem:ident,)*) => {
-        unsafe impl<'a, $($elem),*> Guards<'a> for ($($elem,)*)
+        unsafe impl<'a, $($elem),*> InnerGuards<'a> for ($($elem,)*)
         where
-            $($elem: Guards<'a>,)*
+            $($elem: InnerGuards<'a>,)*
         {
             fn new() -> Self {
                 ($($elem::new(),)*)
@@ -52,9 +52,9 @@ impl_tuple!(T1, T2, T3, T4, T5, T6,);
 
 macro_rules! impl_array {
     ($len:expr, [$($elem:ident),*]) => {
-        unsafe impl<'a, T> Guards<'a> for [T; $len]
+        unsafe impl<'a, T> InnerGuards<'a> for [T; $len]
         where
-            T: Guards<'a>,
+            T: InnerGuards<'a>,
         {
             fn new() -> Self {
                 [$($elem::new()),*]
@@ -77,9 +77,9 @@ impl_array!(4, [T, T, T, T]);
 impl_array!(5, [T, T, T, T, T]);
 impl_array!(6, [T, T, T, T, T, T]);
 
-unsafe impl<'a, F: CallOnce> Guards<'a> for Guard<'a, F> {
+unsafe impl<'a, F: CallOnce> InnerGuards<'a> for InnerGuard<'a, F> {
     fn new() -> Self {
-        Guard {
+        InnerGuard {
             life: PhantomData,
             f: None,
         }

@@ -28,11 +28,11 @@ impl<F: FnOnce()> CallOnce for F {
 /// This type is useful because it allows types to take ownership of a guard.
 //
 // TODO: create 'static handles
-pub struct GuardHandle<'guard, 'scope: 'guard, F: CallOnce + 'guard> {
-    guard: &'guard mut Guard<'scope, F>,
+pub struct ScopeGuard<'body, 'scope: 'body, F: CallOnce + 'body> {
+    guard: &'body mut InnerGuard<'scope, F>,
 }
 
-impl<'guard, 'scope, F: CallOnce> GuardHandle<'guard, 'scope, F> {
+impl<'body, 'scope, F: CallOnce> ScopeGuard<'body, 'scope, F> {
     /// Assigns the closure to be called when the scope ends.
     ///
     /// This replaces the existing closure (if one is set).
@@ -48,38 +48,38 @@ impl<'guard, 'scope, F: CallOnce> GuardHandle<'guard, 'scope, F> {
 /// Guard for a scope.
 ///
 /// The lifetime `'scope` is the lifetime of the scope (i.e. the lifetime of
-/// resources protected by this `Guard`).
+/// resources protected by this `InnerGuard`).
 ///
 /// The guard can optionally contain one closure of type `F`. When the scope
 /// ends, the closure is guaranteed to be called (unless the program
 /// exits/aborts first). The closure is called within the lifetime `'scope`.
-pub struct Guard<'scope, F: CallOnce> {
+pub struct InnerGuard<'scope, F: CallOnce> {
     life: PhantomData<&'scope ()>,
     f: Option<F>,
 }
 
-impl<F: CallOnce> Guard<'static, F> {
+impl<F: CallOnce> InnerGuard<'static, F> {
     /// Creates a guard for the `'static` lifetime.
     ///
     /// This guard's closure will be called only if the guard is dropped. This
-    /// should never be an issue in practice because a `Guard<'static, F>`
+    /// should never be an issue in practice because a `InnerGuard<'static, F>`
     /// can protect only `'static` resources.
-    pub fn new_static() -> Guard<'static, F> {
-        Guard {
+    pub fn new_static() -> InnerGuard<'static, F> {
+        InnerGuard {
             life: PhantomData,
             f: None,
         }
     }
 }
 
-impl<'scope, F: CallOnce> Guard<'scope, F> {
-    /// Returns a handle of the `Guard`.
+impl<'scope, F: CallOnce> InnerGuard<'scope, F> {
+    /// Returns a `ScopeGuard` that wraps the `InnerGuard`.
     ///
     /// This is `unsafe` because only one handle must be created for any
-    /// individual `Guard` over its entire lifetime.
+    /// individual `InnerGuard` over its entire lifetime.
     #[doc(hidden)]
-    pub unsafe fn handle(&mut self) -> GuardHandle<'_, 'scope, F> {
-        GuardHandle {
+    pub unsafe fn wrap(&mut self) -> ScopeGuard<'_, 'scope, F> {
+        ScopeGuard {
             guard: self,
         }
     }
@@ -106,7 +106,7 @@ impl<'scope, F: CallOnce> Guard<'scope, F> {
     }
 }
 
-impl<'scope, F: CallOnce> Drop for Guard<'scope, F> {
+impl<'scope, F: CallOnce> Drop for InnerGuard<'scope, F> {
     // This drop implementation is necessary in case of panics.
     fn drop(&mut self) {
         self.call_once()
@@ -119,36 +119,36 @@ impl<'scope, F: CallOnce> Drop for Guard<'scope, F> {
 /// *guaranteed to be run* when the scope ends (unless the program exits/aborts
 /// first).
 ///
-/// `Guards<'scope>` is a trait that is implemented by collections of
-/// `Guard<'scope>`s. It is implemented for the following types:
+/// `InnerGuards<'scope>` is a trait that is implemented by collections of
+/// `InnerGuard<'scope>`s. It is implemented for the following types:
 ///
-/// * `Guard<'scope, F> where F: CallOnce`
+/// * `InnerGuard<'scope, F> where F: CallOnce`
 /// * Tuples up to length 6:
 ///   * `()`
-///   * `(T1,) where T1: Guards<'scope>`
-///   * `(T1, T2) where T1: Guards<'scope>, T2: Guards<'scope>`
+///   * `(T1,) where T1: InnerGuards<'scope>`
+///   * `(T1, T2) where T1: InnerGuards<'scope>, T2: InnerGuards<'scope>`
 ///   * …
-///   * `(T1, T2, T3, T4, T5, T6) where T1: Guards<'scope>, T2: Guards<'scope>, …`
+///   * `(T1, T2, T3, T4, T5, T6) where T1: InnerGuards<'scope>, T2: InnerGuards<'scope>, …`
 /// * Arrays up to length 6:
-///   * `[T; 0] where T: Guards<'scope>`
-///   * `[T; 1] where T: Guards<'scope>`
-///   * `[T; 2] where T: Guards<'scope>`
+///   * `[T; 0] where T: InnerGuards<'scope>`
+///   * `[T; 1] where T: InnerGuards<'scope>`
+///   * `[T; 2] where T: InnerGuards<'scope>`
 ///   * …
-///   * `[T; 6] where T: Guards<'scope>`
+///   * `[T; 6] where T: InnerGuards<'scope>`
 ///
 /// Note that even though implementations are provided only for fixed-size
-/// collections, it's possible to obtain arbitrarily many `Guard`s by
+/// collections, it's possible to obtain arbitrarily many `InnerGuard`s by
 /// nesting the collections.
 // ///
 // /// # Example
 // ///
 // /// ```
-// /// use strong_scope_guard::{scope, Guard};
+// /// use strong_scope_guard::{scope, InnerGuard};
 // ///
 // /// /// Prevents the slice from being dropped/accessed for the duration of `'scope`.
 // /// ///
 // /// /// A cleanup closure is called at the end of the scope (e.g. to stop a running DMA request).
-// /// fn use_slice<'scope>(slice: &'scope mut [u8], guard: &mut Guard<'scope, fn()>) {
+// /// fn use_slice<'scope>(slice: &'scope mut [u8], guard: &mut InnerGuard<'scope, fn()>) {
 // ///     // Set a closure for cleanup (e.g. to stop a running DMA request).
 // ///     // In this example, we're just printing "end of scope".
 // ///     guard.assign(Some(|| println!("end of scope")));
@@ -170,7 +170,7 @@ impl<'scope, F: CallOnce> Drop for Guard<'scope, F> {
 pub fn scope<'scope, B, G, O>(body: B) -> O
 where
     B: FnOnce(&mut G) -> O,
-    G: private::Guards<'scope>,
+    G: private::InnerGuards<'scope>,
 {
     let mut guards = G::new();
     let out = body(&mut guards);
@@ -203,7 +203,7 @@ macro_rules! scope {
             |&mut scope!(@tup_pat (), $($arg),*): &mut scope!(@tup_type (), $($arg),*)| {
                 $(
                     #[allow(unused_mut)]
-                    let mut $arg = unsafe { $arg.handle() };
+                    let mut $arg = unsafe { $arg.wrap() };
                 )*
                 $body
             }
@@ -219,9 +219,9 @@ macro_rules! scope {
         (ref mut $arg, $tup)
     };
     (@tup_type $type:ty, $arg:ident, $($args:ident),*) => {
-        scope!(@tup_type ($crate::Guard<_>, $type), $($args),*)
+        scope!(@tup_type ($crate::InnerGuard<_>, $type), $($args),*)
     };
     (@tup_type $type:ty, $arg:ident) => {
-        ($crate::Guard<_>, $type)
+        ($crate::InnerGuard<_>, $type)
     };
 }
