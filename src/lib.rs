@@ -18,6 +18,14 @@ impl<F: FnOnce()> ScopeEndHandler for F {
     }
 }
 
+impl<F: FnOnce()> ScopeEndHandler for Option<F> {
+    fn call_once(self) {
+        if let Some(f) = self {
+            (f)()
+        }
+    }
+}
+
 macro_rules! impl_callonce_tuple {
     ($($elem:ident,)*) => {
         impl<$($elem),*> ScopeEndHandler for ($($elem,)*)
