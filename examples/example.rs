@@ -21,7 +21,7 @@ impl Dma<Off> {
         mut guard: ScopeGuard<'body, 'data, fn()>,
     ) -> Dma<Running<'body, 'data>> {
         // start DMA
-        guard.assign(Some(|| println!("stop DMA")));
+        guard.assign_handler(Some(|| println!("stop DMA")));
         Dma {
             state: Running { data, guard },
         }
@@ -33,7 +33,7 @@ impl<'body, 'data> Dma<Running<'body, 'data>> {
         let Running { data, mut guard } = self.state;
         // stop DMA
         // Clear guard.
-        guard.assign(None);
+        guard.assign_handler(None);
         (Dma { state: Off {} }, data)
     }
 }

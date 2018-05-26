@@ -6,18 +6,13 @@ use core::marker::PhantomData;
 /// or used outside of this crate.
 mod private;
 
-/// A trait equivalent to [`FnOnce()`][`FnOnce`].
-///
-/// This is useful because it's possible to implement this trait for your own
-/// types. (This is not true for [`FnOnce`].)
-///
-/// [`FnOnce`]: https://doc.rust-lang.org/stable/core/ops/trait.FnOnce.html
-pub trait CallOnce {
+/// A type that can act as a scope-end handler.
+pub trait ScopeEndHandler {
     /// Performs the call.
     fn call_once(self);
 }
 
-impl<F: FnOnce()> CallOnce for F {
+impl<F: FnOnce()> ScopeEndHandler for F {
     fn call_once(self) {
         (self)()
     }
@@ -25,9 +20,9 @@ impl<F: FnOnce()> CallOnce for F {
 
 macro_rules! impl_callonce_tuple {
     ($($elem:ident,)*) => {
-        impl<$($elem),*> CallOnce for ($($elem,)*)
+        impl<$($elem),*> ScopeEndHandler for ($($elem,)*)
         where
-            $($elem: CallOnce,)*
+            $($elem: ScopeEndHandler,)*
         {
             fn call_once(self) {
                 #[allow(non_snake_case)]
@@ -50,31 +45,31 @@ impl_callonce_tuple!(F1, F2, F3, F4, F5, F6,);
 /// This type is useful because it allows types to take ownership of a guard.
 //
 // TODO: create 'static handles
-pub struct ScopeGuard<'body, 'scope: 'body, F: CallOnce + 'body> {
+pub struct ScopeGuard<'body, 'scope: 'body, F: ScopeEndHandler + 'body> {
     // `None` represents a guard for the `'static` scope.
     inner: Option<&'body mut InnerGuard<'scope, F>>,
 }
 
-impl<'body, 'scope, F: CallOnce> ScopeGuard<'body, 'scope, F> {
-    /// Assigns the closure to be called when the scope ends.
+impl<'body, 'scope, F: ScopeEndHandler> ScopeGuard<'body, 'scope, F> {
+    /// Assigns the handler to be called when the scope ends.
     ///
-    /// This replaces the existing closure (if one is set).
+    /// This replaces the existing handler (if one is set).
     ///
-    /// Assigning a closure is similar to placing a destructor on the stack,
-    /// except that the closure is guaranteed to be run after `'body` ends but
+    /// Assigning a handler is similar to placing a destructor on the stack,
+    /// except that the handler is guaranteed to be run after `'body` ends but
     /// before `'scope` ends (unless the program exits/aborts first or `'scope`
     /// is the `'static` lifetime).
-    pub fn assign(&mut self, f: Option<F>) {
+    pub fn assign_handler(&mut self, f: Option<F>) {
         if let Some(ref mut inner) = self.inner {
-            inner.assign(f)
+            inner.assign_handler(f)
         }
     }
 }
 
-impl<'body, F: CallOnce> ScopeGuard<'body, 'static, F> {
+impl<'body, F: ScopeEndHandler> ScopeGuard<'body, 'static, F> {
     /// Creates a guard for the `'static` lifetime.
     ///
-    /// This guard does not contain a closure, so it can be used to protect
+    /// This guard does not contain a handler, so it can be used to protect
     /// only `'static` resources.
     pub fn new_static() -> Self {
         ScopeGuard { inner: None }
@@ -86,15 +81,15 @@ impl<'body, F: CallOnce> ScopeGuard<'body, 'static, F> {
 /// The lifetime `'scope` is the lifetime of the scope (i.e. the lifetime of
 /// resources protected by this `InnerGuard`).
 ///
-/// The guard can optionally contain one closure of type `F`. When the scope
-/// ends, the closure is guaranteed to be called (unless the program
-/// exits/aborts first). The closure is called within the lifetime `'scope`.
-pub struct InnerGuard<'scope, F: CallOnce> {
+/// The guard can optionally contain one handler of type `F`. When the scope
+/// ends, the handler is guaranteed to be called (unless the program
+/// exits/aborts first). The handler is called within the lifetime `'scope`.
+pub struct InnerGuard<'scope, F: ScopeEndHandler> {
     life: PhantomData<&'scope ()>,
     f: Option<F>,
 }
 
-impl<'scope, F: CallOnce> InnerGuard<'scope, F> {
+impl<'scope, F: ScopeEndHandler> InnerGuard<'scope, F> {
     /// Returns a `ScopeGuard` that wraps the `InnerGuard`.
     ///
     /// This is `unsafe` because only one handle must be created for any
@@ -104,21 +99,21 @@ impl<'scope, F: CallOnce> InnerGuard<'scope, F> {
         ScopeGuard { inner: Some(self) }
     }
 
-    /// Assigns the closure to be called when the scope ends.
+    /// Assigns the handler to be called when the scope ends.
     ///
-    /// This replaces the existing closure (if one is set).
+    /// This replaces the existing handler (if one is set).
     ///
-    /// Assigning a closure is similar to placing a destructor on the stack,
-    /// except that the closure is guaranteed to be run (unless the program
+    /// Assigning a handler is similar to placing a destructor on the stack,
+    /// except that the handler is guaranteed to be run (unless the program
     /// exits/aborts first).
-    pub fn assign(&mut self, f: Option<F>) {
+    pub fn assign_handler(&mut self, f: Option<F>) {
         self.f = f;
     }
 
-    /// Calls the closure (if there is one) and replaces it with `None`.
+    /// Calls the handler (if there is one) and replaces it with `None`.
     ///
-    /// Since the closure is replaced with `None`, subsequent calls are a no-op
-    /// unless a new closure is assigned.
+    /// Since the handler is replaced with `None`, subsequent calls are a no-op
+    /// unless a new handler is assigned.
     fn call_once(&mut self) {
         if let Some(f) = self.f.take() {
             f.call_once()
@@ -126,7 +121,7 @@ impl<'scope, F: CallOnce> InnerGuard<'scope, F> {
     }
 }
 
-impl<'scope, F: CallOnce> Drop for InnerGuard<'scope, F> {
+impl<'scope, F: ScopeEndHandler> Drop for InnerGuard<'scope, F> {
     // This drop implementation is necessary in case of panics.
     fn drop(&mut self) {
         self.call_once()
@@ -142,7 +137,7 @@ impl<'scope, F: CallOnce> Drop for InnerGuard<'scope, F> {
 /// `InnerGuards<'scope>` is a trait that is implemented by collections of
 /// `InnerGuard<'scope>`s. It is implemented for the following types:
 ///
-/// * `InnerGuard<'scope, F> where F: CallOnce`
+/// * `InnerGuard<'scope, F> where F: ScopeEndHandler`
 /// * Tuples up to length 6:
 ///   * `()`
 ///   * `(T1,) where T1: InnerGuards<'scope>`

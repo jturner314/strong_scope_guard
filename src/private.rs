@@ -1,4 +1,4 @@
-use super::{CallOnce, InnerGuard};
+use super::{ScopeEndHandler, InnerGuard};
 use core::marker::PhantomData;
 
 /// Represents a collection of `InnerGuard`s.
@@ -77,7 +77,7 @@ impl_array!(4, [T, T, T, T]);
 impl_array!(5, [T, T, T, T, T]);
 impl_array!(6, [T, T, T, T, T, T]);
 
-unsafe impl<'a, F: CallOnce> InnerGuards<'a> for InnerGuard<'a, F> {
+unsafe impl<'a, F: ScopeEndHandler> InnerGuards<'a> for InnerGuard<'a, F> {
     fn new() -> Self {
         InnerGuard {
             life: PhantomData,
