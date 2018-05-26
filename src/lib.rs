@@ -23,6 +23,28 @@ impl<F: FnOnce()> CallOnce for F {
     }
 }
 
+macro_rules! impl_callonce_tuple {
+    ($($elem:ident,)*) => {
+        impl<$($elem),*> CallOnce for ($($elem,)*)
+        where
+            $($elem: CallOnce,)*
+        {
+            fn call_once(self) {
+                #[allow(non_snake_case)]
+                let ($($elem,)*) = self;
+                $($elem.call_once();)*
+            }
+        }
+    }
+}
+impl_callonce_tuple!();
+impl_callonce_tuple!(F1,);
+impl_callonce_tuple!(F1, F2,);
+impl_callonce_tuple!(F1, F2, F3,);
+impl_callonce_tuple!(F1, F2, F3, F4,);
+impl_callonce_tuple!(F1, F2, F3, F4, F5,);
+impl_callonce_tuple!(F1, F2, F3, F4, F5, F6,);
+
 /// A handle of a guard.
 ///
 /// This type is useful because it allows types to take ownership of a guard.
