@@ -28,6 +28,32 @@ impl<F: FnOnce()> ScopeEndHandler for Option<F> {
     }
 }
 
+macro_rules! impl_scopeendhandler_tuple {
+    ($($elem:ident,)*) => {
+        impl<$($elem),*> ScopeEndHandler for ($($elem,)*)
+        where
+            $($elem: ScopeEndHandler,)*
+        {
+            fn none() -> Self {
+                ($($elem::none(),)*)
+            }
+
+            fn call(self) {
+                #[allow(non_snake_case)]
+                let ($($elem,)*) = self;
+                $($elem.call();)*
+            }
+         }
+     }
+ }
+impl_scopeendhandler_tuple!();
+impl_scopeendhandler_tuple!(H1,);
+impl_scopeendhandler_tuple!(H1, H2,);
+impl_scopeendhandler_tuple!(H1, H2, H3,);
+impl_scopeendhandler_tuple!(H1, H2, H3, H4,);
+impl_scopeendhandler_tuple!(H1, H2, H3, H4, H5,);
+impl_scopeendhandler_tuple!(H1, H2, H3, H4, H5, H6,);
+
 /// A handle of a guard.
 ///
 /// This type is useful because it allows types to take ownership of a guard.
