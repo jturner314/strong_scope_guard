@@ -215,8 +215,8 @@ where
 /// # fn main() {
 /// scope!(|a, b| {
 ///     let z = [1, 2, 3];
-///     a.assign(Some(move || { let _ = z; }));
-///     b.assign(Some(|| {}));
+///     a.assign_handler(Some(move || { let _ = z; }));
+///     b.assign_handler(Some(|| {}));
 /// });
 /// # }
 #[macro_export]
