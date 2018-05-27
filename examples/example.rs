@@ -11,17 +11,17 @@ struct Off {}
 
 struct Running<'body, 'data: 'body> {
     data: &'data mut [u8],
-    guard: ScopeGuard<'body, 'data, fn()>,
+    guard: ScopeGuard<'body, 'data, Option<fn()>>,
 }
 
 impl Dma<Off> {
     pub fn start<'body, 'data>(
         self,
         data: &'data mut [u8],
-        mut guard: ScopeGuard<'body, 'data, fn()>,
+        mut guard: ScopeGuard<'body, 'data, Option<fn()>>,
     ) -> Dma<Running<'body, 'data>> {
         // start DMA
-        guard.assign_handler(Some(|| println!("stop DMA")));
+        guard.set_handler(Some(|| println!("stop DMA")));
         Dma {
             state: Running { data, guard },
         }
@@ -33,7 +33,7 @@ impl<'body, 'data> Dma<Running<'body, 'data>> {
         let Running { data, mut guard } = self.state;
         // stop DMA
         // Clear guard.
-        guard.assign_handler(None);
+        guard.set_handler(Some(|| println!("stop DMA")));
         (Dma { state: Off {} }, data)
     }
 }

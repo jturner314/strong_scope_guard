@@ -1,6 +1,7 @@
 #![no_std]
 
 use core::marker::PhantomData;
+use core::mem;
 
 /// Contains traits that are used in public methods but must not be implemented
 /// or used outside of this crate.
@@ -8,73 +9,51 @@ mod private;
 
 /// A type that can act as a scope-end handler.
 pub trait ScopeEndHandler {
-    /// Performs the call.
-    fn call_once(self);
-}
+    /// Returns a no-op handler.
+    fn none() -> Self;
 
-impl<F: FnOnce()> ScopeEndHandler for F {
-    fn call_once(self) {
-        (self)()
-    }
+    /// Executes the handler.
+    fn call(self);
 }
 
 impl<F: FnOnce()> ScopeEndHandler for Option<F> {
-    fn call_once(self) {
+    fn none() -> Self {
+        None
+    }
+
+    fn call(self) {
         if let Some(f) = self {
             (f)()
         }
     }
 }
 
-macro_rules! impl_callonce_tuple {
-    ($($elem:ident,)*) => {
-        impl<$($elem),*> ScopeEndHandler for ($($elem,)*)
-        where
-            $($elem: ScopeEndHandler,)*
-        {
-            fn call_once(self) {
-                #[allow(non_snake_case)]
-                let ($($elem,)*) = self;
-                $($elem.call_once();)*
-            }
-        }
-    }
-}
-impl_callonce_tuple!();
-impl_callonce_tuple!(F1,);
-impl_callonce_tuple!(F1, F2,);
-impl_callonce_tuple!(F1, F2, F3,);
-impl_callonce_tuple!(F1, F2, F3, F4,);
-impl_callonce_tuple!(F1, F2, F3, F4, F5,);
-impl_callonce_tuple!(F1, F2, F3, F4, F5, F6,);
-
 /// A handle of a guard.
 ///
 /// This type is useful because it allows types to take ownership of a guard.
-//
-// TODO: create 'static handles
-pub struct ScopeGuard<'body, 'scope: 'body, F: ScopeEndHandler + 'body> {
+pub struct ScopeGuard<'body, 'scope: 'body, H: ScopeEndHandler + 'body> {
     // `None` represents a guard for the `'static` scope.
-    inner: Option<&'body mut InnerGuard<'scope, F>>,
+    inner: Option<&'body mut InnerGuard<'scope, H>>,
 }
 
-impl<'body, 'scope, F: ScopeEndHandler> ScopeGuard<'body, 'scope, F> {
-    /// Assigns the handler to be called when the scope ends.
+impl<'body, 'scope, H: ScopeEndHandler> ScopeGuard<'body, 'scope, H> {
+    /// Returns a mutable reference to the handler.
     ///
-    /// This replaces the existing handler (if one is set).
-    ///
-    /// Assigning a handler is similar to placing a destructor on the stack,
-    /// except that the handler is guaranteed to be run after `'body` ends but
-    /// before `'scope` ends (unless the program exits/aborts first or `'scope`
-    /// is the `'static` lifetime).
-    pub fn assign_handler(&mut self, f: Option<F>) {
+    /// If this guard is for the `'static` lifetime, returns `None` since
+    /// `'static` guards do not contain a handler.
+    pub fn handler_mut(&mut self) -> Option<&mut H> {
+        self.inner.as_mut().map(|inner| &mut inner.handler)
+    }
+
+    /// Convenience method for assigning the handler.
+    pub fn set_handler(&mut self, handler: H) {
         if let Some(ref mut inner) = self.inner {
-            inner.assign_handler(f)
+            inner.handler = handler;
         }
     }
 }
 
-impl<'body, F: ScopeEndHandler> ScopeGuard<'body, 'static, F> {
+impl<'body, H: ScopeEndHandler> ScopeGuard<'body, 'static, H> {
     /// Creates a guard for the `'static` lifetime.
     ///
     /// This guard does not contain a handler, so it can be used to protect
@@ -89,50 +68,37 @@ impl<'body, F: ScopeEndHandler> ScopeGuard<'body, 'static, F> {
 /// The lifetime `'scope` is the lifetime of the scope (i.e. the lifetime of
 /// resources protected by this `InnerGuard`).
 ///
-/// The guard can optionally contain one handler of type `F`. When the scope
-/// ends, the handler is guaranteed to be called (unless the program
-/// exits/aborts first). The handler is called within the lifetime `'scope`.
-pub struct InnerGuard<'scope, F: ScopeEndHandler> {
+/// The guard contains one handler of type `H`. When the scope ends, the
+/// handler is guaranteed to be called (unless the program exits/aborts first).
+/// The handler is called within the lifetime `'scope`.
+pub struct InnerGuard<'scope, H: ScopeEndHandler> {
     life: PhantomData<&'scope ()>,
-    f: Option<F>,
+    handler: H,
 }
 
-impl<'scope, F: ScopeEndHandler> InnerGuard<'scope, F> {
+impl<'scope, H: ScopeEndHandler> InnerGuard<'scope, H> {
     /// Returns a `ScopeGuard` that wraps the `InnerGuard`.
     ///
     /// This is `unsafe` because only one handle must be created for any
     /// individual `InnerGuard` over its entire lifetime.
     #[doc(hidden)]
-    pub unsafe fn wrap(&mut self) -> ScopeGuard<'_, 'scope, F> {
+    pub unsafe fn wrap(&mut self) -> ScopeGuard<'_, 'scope, H> {
         ScopeGuard { inner: Some(self) }
     }
 
-    /// Assigns the handler to be called when the scope ends.
+    /// Calls the handler and replaces it with `H::none()`.
     ///
-    /// This replaces the existing handler (if one is set).
-    ///
-    /// Assigning a handler is similar to placing a destructor on the stack,
-    /// except that the handler is guaranteed to be run (unless the program
-    /// exits/aborts first).
-    pub fn assign_handler(&mut self, f: Option<F>) {
-        self.f = f;
-    }
-
-    /// Calls the handler (if there is one) and replaces it with `None`.
-    ///
-    /// Since the handler is replaced with `None`, subsequent calls are a no-op
-    /// unless a new handler is assigned.
-    fn call_once(&mut self) {
-        if let Some(f) = self.f.take() {
-            f.call_once()
-        }
+    /// Since the handler is replaced with `H::none()`, subsequent calls are a
+    /// no-op unless a new handler is set.
+    fn call(&mut self) {
+        mem::replace(&mut self.handler, H::none()).call()
     }
 }
 
-impl<'scope, F: ScopeEndHandler> Drop for InnerGuard<'scope, F> {
+impl<'scope, H: ScopeEndHandler> Drop for InnerGuard<'scope, H> {
     // This drop implementation is necessary in case of panics.
     fn drop(&mut self) {
-        self.call_once()
+        self.call()
     }
 }
 
@@ -145,7 +111,7 @@ impl<'scope, F: ScopeEndHandler> Drop for InnerGuard<'scope, F> {
 /// `InnerGuards<'scope>` is a trait that is implemented by collections of
 /// `InnerGuard<'scope>`s. It is implemented for the following types:
 ///
-/// * `InnerGuard<'scope, F> where F: ScopeEndHandler`
+/// * `InnerGuard<'scope, H> where H: ScopeEndHandler`
 /// * Tuples up to length 6:
 ///   * `()`
 ///   * `(T1,) where T1: InnerGuards<'scope>`
@@ -215,8 +181,8 @@ where
 /// # fn main() {
 /// scope!(|a, b| {
 ///     let z = [1, 2, 3];
-///     a.assign_handler(Some(move || { let _ = z; }));
-///     b.assign_handler(Some(|| {}));
+///     a.set_handler(Some(move || { let _ = z; }));
+///     b.set_handler(Some(|| {}));
 /// });
 /// # }
 #[macro_export]

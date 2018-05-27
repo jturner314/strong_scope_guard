@@ -77,15 +77,15 @@ impl_array!(4, [T, T, T, T]);
 impl_array!(5, [T, T, T, T, T]);
 impl_array!(6, [T, T, T, T, T, T]);
 
-unsafe impl<'a, F: ScopeEndHandler> InnerGuards<'a> for InnerGuard<'a, F> {
+unsafe impl<'a, H: ScopeEndHandler> InnerGuards<'a> for InnerGuard<'a, H> {
     fn new() -> Self {
         InnerGuard {
             life: PhantomData,
-            f: None,
+            handler: H::none(),
         }
     }
 
     fn call_all(&mut self) {
-        self.call_once()
+        self.call()
     }
 }
