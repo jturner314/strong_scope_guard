@@ -71,6 +71,17 @@ fn bad_example() {
     });
 }
 
+/// This must fail to compile.
+fn bad_example2() {
+    let dma = Dma { state: Off {} };
+    let mut data = [1u8, 2, 3];
+    scope(|guard: LocalScopeGuard<Option<fn()>>| -> (_, ()) {
+        let dma = dma.start(&mut data, guard);
+        ::std::mem::forget(dma);
+        panic!();
+    });
+}
+
 // fn usage1() {
 //     let dma = Dma { state: Off {} };
 //     let mut data = [1u8, 2, 3];
