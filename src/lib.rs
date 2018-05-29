@@ -57,6 +57,7 @@ impl_scopeendhandler_tuple!(H1, H2, H3, H4, H5, H6,);
 /// A handle of a guard.
 ///
 /// This type is useful because it allows types to take ownership of a guard.
+#[derive(Debug)]
 pub struct ScopeGuard<'body, 'scope: 'body, H: ScopeEndHandler + 'body> {
     // `None` represents a guard for the `'static` scope.
     inner: Option<&'body mut InnerGuard<'scope, H>>,
@@ -97,6 +98,7 @@ impl<'body, H: ScopeEndHandler> ScopeGuard<'body, 'static, H> {
 /// The guard contains one handler of type `H`. When the scope ends, the
 /// handler is guaranteed to be called (unless the program exits/aborts first).
 /// The handler is called within the lifetime `'scope`.
+#[derive(Debug)]
 pub struct InnerGuard<'scope, H: ScopeEndHandler> {
     life: PhantomData<&'scope ()>,
     handler: H,
