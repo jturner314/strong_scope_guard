@@ -1,7 +1,6 @@
-#[macro_use(scope)]
 extern crate strong_scope_guard;
 
-use strong_scope_guard::ScopeGuard;
+use strong_scope_guard::{scope, LocalScopeGuard, ScopeGuard, StaticScopeGuard};
 
 struct Dma<S> {
     state: S,
@@ -9,17 +8,19 @@ struct Dma<S> {
 
 struct Off {}
 
-struct Running<'body, 'data: 'body> {
+struct Running<'data, G>
+where
+    G: ScopeGuard<'data, Handler = Option<fn()>>,
+{
     data: &'data mut [u8],
-    guard: ScopeGuard<'body, 'data, Option<fn()>>,
+    guard: G,
 }
 
 impl Dma<Off> {
-    pub fn start<'body, 'data>(
-        self,
-        data: &'data mut [u8],
-        mut guard: ScopeGuard<'body, 'data, Option<fn()>>,
-    ) -> Dma<Running<'body, 'data>> {
+    pub fn start<'data, G>(self, data: &'data mut [u8], mut guard: G) -> Dma<Running<'data, G>>
+    where
+        G: ScopeGuard<'data, Handler = Option<fn()>>,
+    {
         // start DMA
         guard.set_handler(Some(|| println!("stop DMA")));
         Dma {
@@ -28,26 +29,45 @@ impl Dma<Off> {
     }
 }
 
-impl<'body, 'data> Dma<Running<'body, 'data>> {
-    pub fn stop(self) -> (Dma<Off>, &'data mut [u8]) {
+impl<'data, G> Dma<Running<'data, G>>
+where
+    G: ScopeGuard<'data, Handler = Option<fn()>>,
+{
+    pub fn stop(self) -> (Dma<Off>, &'data mut [u8], G) {
         let Running { data, mut guard } = self.state;
         // stop DMA
         // Clear guard.
         guard.set_handler(Some(|| println!("stop DMA")));
-        (Dma { state: Off {} }, data)
+        (Dma { state: Off {} }, data, guard)
     }
 }
 
 fn usage1() {
     let dma = Dma { state: Off {} };
     let mut data = [1u8, 2, 3];
-    let dma = scope!(|guard| {
-        let dma = dma.start(&mut data, guard);
-        let (dma, data) = dma.stop();
+    let dma = scope(|(g1, g2): (LocalScopeGuard<Option<fn()>>, LocalScopeGuard<Option<fn()>>)| {
+        let dma = dma.start(&mut data, g1);
+        let (dma, data, g1) = dma.stop();
         println!("{}", data[0]);
-        dma
+        // let g2 = StaticScopeGuard::new(); // We shouldn't be able to return this as if it was the original g2.
+        ((g1, g2), dma)
     });
+
+    static mut DATA: [u8; 3] = [1, 2, 3];
+    let dma = dma.start(unsafe { &mut DATA }, StaticScopeGuard::new());
+    let dma = dma.stop();
 }
+
+// fn usage1() {
+//     let dma = Dma { state: Off {} };
+//     let mut data = [1u8, 2, 3];
+//     let dma = scope!(|guard| {
+//         let dma = dma.start(&mut data, guard);
+//         let (dma, data) = dma.stop();
+//         println!("{}", data[0]);
+//         dma
+//     });
+// }
 
 // fn usage2() {
 //     let dma = Dma { state: Off {} };
