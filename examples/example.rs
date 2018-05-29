@@ -22,7 +22,7 @@ impl Dma<Off> {
         G: ScopeGuard<'data, Handler = Option<fn()>>,
     {
         // start DMA
-        guard.set_handler(Some(|| println!("stop DMA")));
+        *guard.handler_mut() = Some(|| println!("stop DMA"));
         Dma {
             state: Running { data, guard },
         }
@@ -37,7 +37,7 @@ where
         let Running { data, mut guard } = self.state;
         // stop DMA
         // Clear guard.
-        guard.set_handler(Some(|| println!("stop DMA")));
+        *guard.handler_mut() = Some(|| println!("stop DMA"));
         (Dma { state: Off {} }, data, guard)
     }
 }

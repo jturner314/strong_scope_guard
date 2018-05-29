@@ -56,16 +56,14 @@ impl_scopeendhandler_tuple!(H1, H2, H3, H4, H5, H6,);
 
 /// A guard that protects access by parallel tasks to temporary resources.
 pub trait ScopeGuard<'scope>: private::ScopeGuardPriv<'scope> {
+    /// A handler that is guaranteed to be called at the end of the scope.
     type Handler: ScopeEndHandler;
 
-    fn handler_mut(&mut self) -> Option<&mut Self::Handler>;
+    /// Returns a reference to the handler.
+    fn handler(&self) -> &Self::Handler;
 
-    /// Convenience method for assigning the handler.
-    fn set_handler(&mut self, handler: Self::Handler) {
-        if let Some(h) = self.handler_mut() {
-            *h = handler
-        }
-    }
+    /// Returns a mutable reference to the handler.
+    fn handler_mut(&mut self) -> &mut Self::Handler;
 }
 
 /// A guard that protects non-`'static` data.
@@ -78,8 +76,12 @@ pub struct LocalScopeGuard<'scope, H: ScopeEndHandler> {
 impl<'scope, H: ScopeEndHandler> ScopeGuard<'scope> for LocalScopeGuard<'scope, H> {
     type Handler = H;
 
-    fn handler_mut(&mut self) -> Option<&mut H> {
-        Some(&mut self.handler)
+    fn handler(&self) -> &H {
+        &self.handler
+    }
+
+    fn handler_mut(&mut self) -> &mut H {
+        &mut self.handler
     }
 }
 
@@ -104,16 +106,19 @@ impl<'scope, H: ScopeEndHandler> Drop for LocalScopeGuard<'scope, H> {
 }
 
 /// A guard that protects `'static` data.
+///
+/// Note that guards of this type never call their handlers, because the
+/// `'static` lifetime is valid for the entire duration of the program.
 #[derive(Debug)]
 pub struct StaticScopeGuard<H: ScopeEndHandler> {
-    handler: PhantomData<H>,
+    handler: H,
 }
 
 impl<H: ScopeEndHandler> StaticScopeGuard<H> {
     /// Returns a new `StaticScopeGuard`.
     pub fn new() -> Self {
         StaticScopeGuard {
-            handler: PhantomData,
+            handler: H::none(),
         }
     }
 }
@@ -121,8 +126,12 @@ impl<H: ScopeEndHandler> StaticScopeGuard<H> {
 impl<H: ScopeEndHandler> ScopeGuard<'static> for StaticScopeGuard<H> {
     type Handler = H;
 
-    fn handler_mut(&mut self) -> Option<&mut H> {
-        None
+    fn handler(&self) -> &H {
+        &self.handler
+    }
+
+    fn handler_mut(&mut self) -> &mut H {
+        &mut self.handler
     }
 }
 
@@ -221,8 +230,8 @@ where
 /// # fn main() {
 /// scope!(|(a, b)| {
 ///     let z = [1, 2, 3];
-///     a.set_handler(Some(move || { let _ = z; }));
-///     b.set_handler(Some(|| {}));
+///     *a.handler_mut() = Some(move || { let _ = z; });
+///     *b.handler_mut() = Some(|| {});
 ///     ((a, b), ())
 /// });
 /// # }
