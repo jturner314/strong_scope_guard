@@ -58,10 +58,11 @@ fn usage1() {
     let dma = dma.stop();
 }
 
+/// This must fail to compile.
 fn bad_example() {
     let dma = Dma { state: Off {} };
-    let mut data = [1u8, 2, 3];
     scope(|outer: LocalScopeGuard<Option<fn()>>| -> (_, ()) {
+        let mut data = [1u8, 2, 3];
         scope(|inner: LocalScopeGuard<Option<fn()>>| {
             let dma = dma.start(&mut data, inner);
             (outer, dma)

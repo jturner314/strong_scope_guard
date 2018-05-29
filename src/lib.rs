@@ -69,7 +69,8 @@ pub trait ScopeGuard<'scope>: private::ScopeGuardPriv<'scope> {
 /// A guard that protects non-`'static` data.
 #[derive(Debug)]
 pub struct LocalScopeGuard<'scope, H: ScopeEndHandler> {
-    scope: PhantomData<&'scope ()>,
+    // The `*mut` is necessary to make this type invariant in `'scope`.
+    scope: PhantomData<*mut (&'scope ())>,
     handler: H,
 }
 
