@@ -217,7 +217,19 @@ where
 macro_rules! scope {
     (|$($arg:ident),*| $body:expr) => {
         $crate::scope(
-            |&mut scope!(@tup_pat (), $($arg),*): &mut scope!(@tup_type (), $($arg),*)| {
+            |&mut scope!(@nest_pat (), $($arg),*): &mut scope!(@nest_type (), $($arg),*)| {
+                $(
+                    #[allow(unused_mut)]
+                    #[allow(unsafe_code)]
+                    let mut $arg = unsafe { $arg.wrap() };
+                )*
+                $body
+            }
+        )
+    };
+    (move |$($arg:ident),*| $body:expr) => {
+        $crate::scope(
+            move |&mut scope!(@nest_pat (), $($arg),*): &mut scope!(@nest_type (), $($arg),*)| {
                 $(
                     #[allow(unused_mut)]
                     #[allow(unsafe_code)]
@@ -230,16 +242,19 @@ macro_rules! scope {
     (|$($arg:ident),*,| $body:expr) => {
         scope!(|$($arg),*| $body)
     };
-    (@tup_pat $tup:pat, $arg:ident, $($args:ident),*) => {
-        scope!(@tup_pat (ref mut $arg, $tup), $($args),*)
+    (|$($arg:ident),*,| $body:expr) => {
+        scope!(move |$($arg),*| $body)
     };
-    (@tup_pat $tup:pat, $arg:ident) => {
+    (@nest_pat $tup:pat, $arg:ident, $($args:ident),*) => {
+        scope!(@nest_pat (ref mut $arg, $tup), $($args),*)
+    };
+    (@nest_pat $tup:pat, $arg:ident) => {
         (ref mut $arg, $tup)
     };
-    (@tup_type $type:ty, $arg:ident, $($args:ident),*) => {
-        scope!(@tup_type ($crate::InnerGuard<_>, $type), $($args),*)
+    (@nest_type $type:ty, $arg:ident, $($args:ident),*) => {
+        scope!(@nest_type ($crate::InnerGuard<_>, $type), $($args),*)
     };
-    (@tup_type $type:ty, $arg:ident) => {
+    (@nest_type $type:ty, $arg:ident) => {
         ($crate::InnerGuard<_>, $type)
     };
 }
